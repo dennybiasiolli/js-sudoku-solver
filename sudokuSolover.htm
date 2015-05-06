@@ -2,7 +2,10 @@
     <title>Sudoku Solver</title>
     <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/angular_material/0.8.3/angular-material.min.css">
     <link rel="stylesheet" type="text/css" href="css/class.css" />
-    <body ng-controller="myCtrl">
+    <body layout="column" ng-controller="myCtrl">
+        <md-toolbar layout="row">
+            <h1 class="md-toolbar-tools" layout-align-gt-sm="center">Sudoku Solver</h1>
+        </md-toolbar>
         <div id="status">Reading data..</div>
         <div class="Main">
             <div class="Tabella">
