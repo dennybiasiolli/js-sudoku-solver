@@ -3,7 +3,7 @@
 /* Controllers */
 
 angular.module('myApp.controllers', [])
-    .controller('myCtrl', ['$scope', '$location', '$timeout', function($scope, $location, $timeout) {
+    .controller('myCtrl', ['$scope', '$location', '$timeout', '$window', function($scope, $location, $timeout, $window) {
         $scope.initDB = function(){
             db.transaction(function(tx) {
                 //tx.executeSql("DROP TABLE SudokuResolver");
@@ -40,33 +40,33 @@ angular.module('myApp.controllers', [])
                     $timeout($scope.risolvi_clic(), 500);
                 }
                 else{
-                    alert("Completed!");
+                    $window.alert("Completed!");
                 }
             });
         };
 
         $scope.mostraTabellaBase = function(){
-            $("div.Tabella").hide("fast", function(){
-                var strOut='';
-                strOut += '<div class="Tabella">';
-                for(var x=0;x<9;x++){
-                    if(!(x%3)) strOut += '<div class="BordoH"></div>';
-                    for(var y=0;y<9;y++){
-                        if(!(y%3)) strOut += '<div class="BordoV"></div>';
-                        strOut += '<input id="valN_'+x+'_'+y+'" class="Num" type="text" maxlength="1" data-x="'+x+'" data-y="'+y+'" ng-click="checkTasto(this,event)" />';
-                    }
-                    strOut += '<div class="BordoV"></div>';
-                    strOut += '<br>';
-                }
-                strOut += '<div class="BordoH"></div>';
-                strOut += '</div>';
-                $("#status").show("fast", function(){
-                    $("div.Tabella").html(strOut);
-                    $("div.Tabella").show("fast", function(){
-                        $("#status").hide("fast");
-                    });
-                });
-            });
+            //$("div.Tabella").hide("fast", function(){
+            //    var strOut='';
+            //    strOut += '<div class="Tabella">';
+            //    for(var x=0;x<9;x++){
+            //        if(!(x%3)) strOut += '<div class="BordoH"></div>';
+            //        for(var y=0;y<9;y++){
+            //            if(!(y%3)) strOut += '<div class="BordoV"></div>';
+            //            strOut += '<input type="number" id="valN_'+x+'_'+y+'" class="Num" maxlength="1" data-x="'+x+'" data-y="'+y+'" ng-click="checkTasto(this,event)" />';
+            //        }
+            //        strOut += '<div class="BordoV"></div>';
+            //        strOut += '<br>';
+            //    }
+            //    strOut += '<div class="BordoH"></div>';
+            //    strOut += '</div>';
+            //    $("#status").show("fast", function(){
+            //        $("div.Tabella").html(strOut);
+            //        $("div.Tabella").show("fast", function(){
+            //            $("#status").hide("fast");
+            //        });
+            //    });
+            //});
         };
 
         $scope.checkTasto = function(obj,e){
@@ -84,8 +84,8 @@ angular.module('myApp.controllers', [])
             //elimino i valori possibili in base ai dati presenti in tabella
             for(var x=0;x<9;x++){
                 for(var y=0;y<9;y++){
-                    var valN=$("#valN_"+x+"_"+y).val();
-                    if(valN!="")
+                    var valN = $scope.valori[x][y];//$("#valN_"+x+"_"+y).val();
+                    if(valN)
                         $scope.impostaVal(x,y,valN);
                 }
             }
@@ -121,10 +121,10 @@ angular.module('myApp.controllers', [])
                         var x = result.rows.item(i)['posX'];
                         var y = result.rows.item(i)['posY'];
                         var n = result.rows.item(i)['valN'];
-                        var valN=$("#valN_"+x+"_"+y).val();
-                        if(valN==""){
+                        var valN = $scope.valori[x][y];//$("#valN_"+x+"_"+y).val();
+                        if(!valN){
                             $scope.impostaVal(x,y,n);
-                            $("#valN_"+x+"_"+y).val(n);
+                            $scope.valori[x][y] = n;//$("#valN_"+x+"_"+y).val(n);
                             nScritti++;
                         }
                     }
@@ -150,10 +150,10 @@ angular.module('myApp.controllers', [])
                         var x = result.rows.item(i)['posX'];
                         var y = result.rows.item(i)['posY'];
                         var n = result.rows.item(i)['valN'];
-                        var valN=$("#valN_"+x+"_"+y).val();
-                        if(valN==""){
+                        var valN = $scope.valori[x][y];//$("#valN_"+x+"_"+y).val();
+                        if(!valN){
                             $scope.impostaVal(x,y,n);
-                            $("#valN_"+x+"_"+y).val(n);
+                            $scope.valori[x][y] = n;//$("#valN_"+x+"_"+y).val(n);
                             nScritti++;
                         }
                     }
@@ -179,10 +179,10 @@ angular.module('myApp.controllers', [])
                         var x = result.rows.item(i)['posX'];
                         var y = result.rows.item(i)['posY'];
                         var n = result.rows.item(i)['valN'];
-                        var valN=$("#valN_"+x+"_"+y).val();
-                        if(valN==""){
+                        var valN = $scope.valori[x][y];//$("#valN_"+x+"_"+y).val();
+                        if(!valN){
                             $scope.impostaVal(x,y,n);
-                            $("#valN_"+x+"_"+y).val(n);
+                            $scope.valori[x][y] = n;//$("#valN_"+x+"_"+y).val(n);
                             nScritti++;
                         }
                     }
@@ -218,9 +218,9 @@ angular.module('myApp.controllers', [])
             var scritti=0;
             for(var x=0;x<9;x++){
                 for(var y=0;y<9;y++){
-                    var valN=$("#valN_"+x+"_"+y).val();
-                    if(valN=="" && tbl[x][y]){
-                        $("#valN_"+x+"_"+y).val(tbl[x][y]);
+                    var valN = $scope.valori[x][y];//$("#valN_"+x+"_"+y).val();
+                    if(valN && tbl[x][y]){
+                        $scope.valori[x][y] = tbl[x][y];//$("#valN_"+x+"_"+y).val(tbl[x][y]);
                         scritti++;
                     }
                 }
@@ -228,6 +228,8 @@ angular.module('myApp.controllers', [])
             //alert("Scritti:"+scritti);
             return(scritti);
         };
+
+        $scope.valori = [[],[],[],[],[],[],[],[],[]];
 
         try{var db = openDatabase("SudokuResolver", "0.1", "Sudoku Resolver", 200000);}
         catch(ex){alert("Cannot create database.");}

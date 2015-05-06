@@ -8,11 +8,11 @@ div.Tabella{
     width:450px;
 }
 
-div.BordoH{
+.BordoH{
     border-top:8px solid white;
     width:100%;
 }
-div.BordoV{
+.BordoV{
     border-left:8px solid white;
     display:inline;
 }
