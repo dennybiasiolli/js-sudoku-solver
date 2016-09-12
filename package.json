@@ -1,0 +1,29 @@
+{
+  "name": "angular-sudoku-solver",
+  "version": "1.0.0",
+  "description": "A simple angularJs application to solve sudoku",
+  "main": "sudokuSolver.html",
+  "scripts": {
+    "postinstall": "webdriver-manager update",
+    "protractor": "protractor",
+    "test": "protractor tests/conf.js",
+    "webdriver-manager": "webdriver-manager"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dennybiasiolli/angular-sudokuSolver.git"
+  },
+  "keywords": [
+    "angular",
+    "sudoku"
+  ],
+  "author": "Denny Biasiolli",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dennybiasiolli/angular-sudokuSolver/issues"
+  },
+  "homepage": "https://github.com/dennybiasiolli/angular-sudokuSolver#readme",
+  "devDependencies": {
+    "protractor": "^4.0.5"
+  }
+}
