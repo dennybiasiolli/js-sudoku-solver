@@ -15,11 +15,21 @@ python3 -m http.server 8080
 # then visit http://localhost:8080/sudokuSolver.html
 ```
 
-1. Enter known digits (1–9) in the grid
-2. Click **Solve!**
-3. Cells filled by the solver appear in green; your clues stay bold/dark
+1. Enter known digits (1–9), or pick a preset from **Load example**
+2. Click **Solve!** to auto-play (one cell at a time with explanations), or **Step** for single placements
+3. **Stop** pauses auto-play; **Resume** (Solve!) or **Step** continues from where you left off
+4. Cells filled by the solver appear in green (latest step highlighted); your clues stay bold/dark
 
 **Clear** resets the board.
+
+### Example puzzles
+
+| Name | Notes |
+|------|--------|
+| Easy | Fully solvable with singles — good first demo |
+| Medium | More steps, still completes |
+| Hard (partial) | Needs techniques beyond singles — solver stops mid-way |
+| Classic | Another fully solvable reference grid |
 
 ## How it works
 

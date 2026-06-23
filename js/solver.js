@@ -4,10 +4,13 @@
  * Sudoku solver using constraint propagation (same strategy as the original
  * Web SQL version: track possible values per cell, eliminate by row/col/box,
  * and place singles + unique candidates in rows/columns).
+ *
+ * Supports auto-play and single-step modes with human-readable explanations.
  */
 
 const SIZE = 9;
 const BOX = 3;
+const STEP_DELAY_MS = 150;
 
 /** @type {HTMLInputElement[][]} */
 let inputs = [];
@@ -18,6 +21,44 @@ let board = [];
 /** @type {Set<number>[][]} candidates — possible values per cell */
 let candidates = [];
 
+/** Active solve session state */
+let solving = false;
+let autoPlaying = false;
+let stepCount = 0;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let autoTimer = null;
+/** @type {HTMLInputElement | null} */
+let lastHighlighted = null;
+
+/**
+ * Built-in examples (81 chars, 0 = empty).
+ * Easy/medium fully solve with singles; hard demonstrates partial solve.
+ */
+const EXAMPLES = [
+    {
+        id: 'easy',
+        label: 'Easy',
+        // Fully solvable with naked/hidden singles
+        puzzle: '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
+    },
+    {
+        id: 'medium',
+        label: 'Medium',
+        puzzle: '000260701680070090190004500820100040004602900050003028009300074040050036703018000',
+    },
+    {
+        id: 'hard',
+        label: 'Hard (partial)',
+        // Makes progress with singles, then stalls (needs advanced techniques)
+        puzzle: '000260701680070090090000500820000000004600000050003008000300004040000036700018000',
+    },
+    {
+        id: 'classic',
+        label: 'Classic',
+        puzzle: '003020600900305001001806400008102900700000008006708200002609500800203009005010300',
+    },
+];
+
 function createEmptyBoard() {
     return Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
 }
@@ -26,6 +67,10 @@ function createCandidates() {
     return Array.from({ length: SIZE }, () =>
         Array.from({ length: SIZE }, () => new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]))
     );
+}
+
+function cellRef(r, c) {
+    return `R${r + 1}C${c + 1}`;
 }
 
 function buildGrid() {
@@ -64,10 +109,11 @@ function buildGrid() {
 }
 
 function onCellInput(e) {
+    if (solving) stopSolving(false);
     const input = e.target;
     const digit = input.value.replace(/[^1-9]/g, '');
     input.value = digit.slice(-1);
-    input.classList.remove('solved');
+    input.classList.remove('solved', 'just-placed');
 }
 
 function onCellKeydown(e) {
@@ -97,7 +143,7 @@ function readBoardFromInputs() {
             const v = inputs[r][c].value.trim();
             board[r][c] = v ? Number(v) : 0;
             inputs[r][c].classList.toggle('given', !!v);
-            inputs[r][c].classList.remove('solved');
+            inputs[r][c].classList.remove('solved', 'just-placed');
         }
     }
 }
@@ -120,6 +166,20 @@ function setStatus(msg, isError = false) {
     const el = document.getElementById('status');
     el.textContent = msg;
     el.classList.toggle('error', isError);
+}
+
+function clearHighlight() {
+    if (lastHighlighted) {
+        lastHighlighted.classList.remove('just-placed');
+        lastHighlighted = null;
+    }
+}
+
+function highlightCell(r, c) {
+    clearHighlight();
+    const input = inputs[r][c];
+    input.classList.add('just-placed');
+    lastHighlighted = input;
 }
 
 function resetCandidates() {
@@ -157,23 +217,26 @@ function applyGivenClues() {
     }
 }
 
-/** Cells with exactly one candidate left (original controllaValoriUnici). */
-function findNakedSingles() {
-    const placed = [];
+/**
+ * Find the next single placement with an explanation.
+ * Priority: naked singles, then hidden singles in rows, then columns.
+ * @returns {{ r: number, c: number, n: number, reason: string } | null}
+ */
+function findNextStep() {
     for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
             if (!board[r][c] && candidates[r][c].size === 1) {
                 const n = candidates[r][c].values().next().value;
-                placed.push({ r, c, n });
+                return {
+                    r,
+                    c,
+                    n,
+                    reason: `only one candidate left in ${cellRef(r, c)} (naked single)`,
+                };
             }
         }
     }
-    return placed;
-}
 
-/** Digit appears only once as candidate in a row (original controllaRigheUnivoche). */
-function findHiddenSinglesInRows() {
-    const placed = [];
     for (let r = 0; r < SIZE; r++) {
         for (let n = 1; n <= SIZE; n++) {
             let onlyCol = -1;
@@ -185,16 +248,16 @@ function findHiddenSinglesInRows() {
                 }
             }
             if (count === 1 && onlyCol >= 0 && !board[r][onlyCol]) {
-                placed.push({ r, c: onlyCol, n });
+                return {
+                    r,
+                    c: onlyCol,
+                    n,
+                    reason: `only candidate for ${n} in row ${r + 1} (hidden single)`,
+                };
             }
         }
     }
-    return placed;
-}
 
-/** Digit appears only once as candidate in a column (original controllaColonneUnivoche). */
-function findHiddenSinglesInCols() {
-    const placed = [];
     for (let c = 0; c < SIZE; c++) {
         for (let n = 1; n <= SIZE; n++) {
             let onlyRow = -1;
@@ -206,36 +269,17 @@ function findHiddenSinglesInCols() {
                 }
             }
             if (count === 1 && onlyRow >= 0 && !board[onlyRow][c]) {
-                placed.push({ r: onlyRow, c, n });
+                return {
+                    r: onlyRow,
+                    c,
+                    n,
+                    reason: `only candidate for ${n} in column ${c + 1} (hidden single)`,
+                };
             }
         }
     }
-    return placed;
-}
 
-function applyPlacements(placements) {
-    let count = 0;
-    const seen = new Set();
-    for (const { r, c, n } of placements) {
-        const key = `${r},${c}`;
-        if (board[r][c] || seen.has(key)) continue;
-        seen.add(key);
-        placeValue(r, c, n);
-        count++;
-    }
-    return count;
-}
-
-/**
- * One pass of constraint propagation (original elaboraTabella).
- * @returns {number} how many cells were newly filled
- */
-function propagateOnce() {
-    let total = 0;
-    total += applyPlacements(findNakedSingles());
-    total += applyPlacements(findHiddenSinglesInRows());
-    total += applyPlacements(findHiddenSinglesInCols());
-    return total;
+    return null;
 }
 
 function isComplete() {
@@ -256,56 +300,228 @@ function hasContradiction() {
     return false;
 }
 
-function solveStepByStep() {
+function updateSolveButtons() {
+    const btnSolve = document.getElementById('btnSolve');
+    const btnStep = document.getElementById('btnStep');
+    const btnStop = document.getElementById('btnStop');
+
+    btnSolve.disabled = autoPlaying;
+    btnStep.disabled = autoPlaying;
+    btnStop.disabled = !autoPlaying;
+    btnSolve.textContent = solving && !autoPlaying ? 'Resume' : 'Solve!';
+}
+
+function finishSolving(message, isError = false) {
+    if (autoTimer !== null) {
+        clearTimeout(autoTimer);
+        autoTimer = null;
+    }
+    solving = false;
+    autoPlaying = false;
+    updateSolveButtons();
+    setStatus(message, isError);
+}
+
+function stopSolving(showPaused = true) {
+    if (autoTimer !== null) {
+        clearTimeout(autoTimer);
+        autoTimer = null;
+    }
+    autoPlaying = false;
+    if (!solving) {
+        updateSolveButtons();
+        return;
+    }
+    updateSolveButtons();
+    if (showPaused) {
+        setStatus(`Paused at step ${stepCount}. Click Step or Resume to continue.`);
+    }
+}
+
+/**
+ * Start or resume a solve session from the current grid inputs (only if not yet solving).
+ * @returns {boolean} false if init failed (invalid puzzle)
+ */
+function beginSolveSession() {
+    if (solving) return true;
+
     readBoardFromInputs();
     resetCandidates();
     applyGivenClues();
+    stepCount = 0;
+    clearHighlight();
 
     if (hasContradiction()) {
         setStatus('Invalid puzzle: conflicting clues.', true);
+        return false;
+    }
+
+    solving = true;
+    return true;
+}
+
+/**
+ * Apply one placement step. Returns whether more progress may still be possible.
+ * @returns {'placed' | 'done' | 'stuck' | 'invalid' | 'idle'}
+ */
+function applyOneStep() {
+    if (!beginSolveSession()) return 'invalid';
+
+    const step = findNextStep();
+    if (!step) {
+        if (isComplete()) {
+            finishSolving(`Completed in ${stepCount} step${stepCount === 1 ? '' : 's'}!`);
+            return 'done';
+        }
+        if (hasContradiction()) {
+            finishSolving('Stuck: no valid solution from these clues.', true);
+            return 'stuck';
+        }
+        finishSolving(
+            stepCount > 0
+                ? `Partial after ${stepCount} step${stepCount === 1 ? '' : 's'}: more advanced logic (or trial) needed for the rest.`
+                : 'No singles to place. Try different clues or a harder technique set.'
+        );
+        return 'stuck';
+    }
+
+    const { r, c, n, reason } = step;
+    placeValue(r, c, n);
+    stepCount++;
+
+    const input = inputs[r][c];
+    if (!input.classList.contains('given')) {
+        input.value = String(n);
+        input.classList.add('solved');
+    }
+    highlightCell(r, c);
+    setStatus(`Step ${stepCount}: placed ${n} at ${cellRef(r, c)} — ${reason}`);
+
+    if (isComplete()) {
+        finishSolving(`Step ${stepCount}: placed ${n} at ${cellRef(r, c)} — ${reason}. Completed!`);
+        return 'done';
+    }
+    if (hasContradiction()) {
+        finishSolving('Stuck: no valid solution from these clues.', true);
+        return 'stuck';
+    }
+
+    return 'placed';
+}
+
+function scheduleAutoTick() {
+    if (!autoPlaying) return;
+    autoTimer = setTimeout(() => {
+        autoTimer = null;
+        if (!autoPlaying) return;
+        const result = applyOneStep();
+        if (result === 'placed') {
+            scheduleAutoTick();
+        } else {
+            autoPlaying = false;
+            updateSolveButtons();
+        }
+    }, STEP_DELAY_MS);
+}
+
+function startAutoSolve() {
+    if (!beginSolveSession()) return;
+
+    if (isComplete()) {
+        finishSolving('Already complete!');
         return;
     }
 
-    const btn = document.getElementById('btnSolve');
-    btn.disabled = true;
-    setStatus('Solving…');
+    autoPlaying = true;
+    updateSolveButtons();
+    setStatus(stepCount === 0 ? 'Solving…' : `Resuming from step ${stepCount}…`);
+    scheduleAutoTick();
+}
 
-    function tick() {
-        const filled = propagateOnce();
-        writeBoardToInputs(true);
+function stepOnce() {
+    if (autoPlaying) return;
+    applyOneStep();
+    updateSolveButtons();
+}
 
-        if (filled > 0) {
-            setTimeout(tick, 120);
-            return;
-        }
+/**
+ * Load an 81-char puzzle string (0 or . = empty) onto the grid.
+ * @param {string} puzzle
+ * @param {string} [label]
+ */
+function loadPuzzle(puzzle, label) {
+    stopSolving(false);
+    solving = false;
+    stepCount = 0;
+    clearHighlight();
 
-        btn.disabled = false;
-        if (isComplete()) {
-            setStatus('Completed!');
-        } else if (hasContradiction()) {
-            setStatus('Stuck: no valid solution from these clues.', true);
-        } else {
-            setStatus('Partial: more advanced logic (or trial) needed for the rest.');
-        }
+    const cleaned = puzzle.replace(/[^0-9.]/g, '').replace(/\./g, '0');
+    if (cleaned.length !== SIZE * SIZE) {
+        setStatus('Invalid example puzzle data.', true);
+        return;
     }
 
-    setTimeout(tick, 0);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        const r = Math.floor(i / SIZE);
+        const c = i % SIZE;
+        const ch = cleaned[i];
+        const n = ch === '0' ? 0 : Number(ch);
+        const input = inputs[r][c];
+        input.value = n ? String(n) : '';
+        input.classList.toggle('given', !!n);
+        input.classList.remove('solved', 'just-placed');
+    }
+
+    board = createEmptyBoard();
+    updateSolveButtons();
+    setStatus(label ? `Loaded “${label}”. Click Solve! or Step to begin.` : 'Example loaded.');
+    inputs[0][0].focus();
+}
+
+function onExampleChange(e) {
+    const id = e.target.value;
+    if (!id) return;
+    const example = EXAMPLES.find((ex) => ex.id === id);
+    if (example) loadPuzzle(example.puzzle, example.label);
+    e.target.value = '';
 }
 
 function clearGrid() {
+    stopSolving(false);
+    solving = false;
+    stepCount = 0;
+    clearHighlight();
+
     for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
             inputs[r][c].value = '';
-            inputs[r][c].classList.remove('given', 'solved');
+            inputs[r][c].classList.remove('given', 'solved', 'just-placed');
         }
     }
     board = createEmptyBoard();
+    updateSolveButtons();
     setStatus('');
     inputs[0][0].focus();
 }
 
+function populateExampleSelect() {
+    const select = document.getElementById('exampleSelect');
+    for (const ex of EXAMPLES) {
+        const opt = document.createElement('option');
+        opt.value = ex.id;
+        opt.textContent = ex.label;
+        select.appendChild(opt);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     buildGrid();
-    document.getElementById('btnSolve').addEventListener('click', solveStepByStep);
+    populateExampleSelect();
+    updateSolveButtons();
+
+    document.getElementById('btnSolve').addEventListener('click', startAutoSolve);
+    document.getElementById('btnStep').addEventListener('click', stepOnce);
+    document.getElementById('btnStop').addEventListener('click', () => stopSolving(true));
     document.getElementById('btnClear').addEventListener('click', clearGrid);
+    document.getElementById('exampleSelect').addEventListener('change', onExampleChange);
 });

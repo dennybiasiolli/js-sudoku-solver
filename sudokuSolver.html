@@ -12,10 +12,19 @@
     </header>
 
     <main>
+        <div class="examples">
+            <label for="exampleSelect">Load example</label>
+            <select id="exampleSelect" aria-label="Load example puzzle">
+                <option value="">Choose a puzzle…</option>
+            </select>
+        </div>
+
         <div id="grid" class="grid" aria-label="Sudoku grid"></div>
 
         <div class="actions">
             <button id="btnSolve" type="button" class="btn btn-primary">Solve!</button>
+            <button id="btnStep" type="button" class="btn">Step</button>
+            <button id="btnStop" type="button" class="btn" disabled>Stop</button>
             <button id="btnClear" type="button" class="btn">Clear</button>
         </div>
 
