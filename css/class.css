@@ -1,25 +1,188 @@
-div.Main{
-    text-align:center;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
-div.Tabella{
-    padding:10px;
-    margin:0 auto;
-    width:450px;
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f5f5;
+    color: #212121;
 }
 
-.BordoH{
-    border-top:8px solid white;
-    width:100%;
-}
-.BordoV{
-    border-left:8px solid white;
-    display:inline;
+header {
+    background: #3f51b5;
+    color: #fff;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-input.Num{
-    margin:1px;
-    width:40px;
-    height:40px;
-    text-align:center;
+header h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+main {
+    max-width: 28rem;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 2rem;
+    text-align: center;
+}
+
+/* 9×9 CSS grid — thick lines mark 3×3 boxes */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(9, 2.5rem);
+    grid-template-rows: repeat(9, 2.5rem);
+    gap: 0;
+    width: fit-content;
+    margin: 0 auto 1.25rem;
+    background: #212121;
+    border: 3px solid #212121;
+    border-radius: 2px;
+}
+
+.cell {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #bdbdbd;
+    border-radius: 0;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    background: #fff;
+    color: #212121;
+    outline: none;
+    -moz-appearance: textfield;
+}
+
+.cell::-webkit-outer-spin-button,
+.cell::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.cell:focus {
+    background: #e8eaf6;
+    z-index: 1;
+    box-shadow: inset 0 0 0 2px #3f51b5;
+}
+
+.cell.given {
+    font-weight: 700;
+    color: #1a237e;
+}
+
+.cell.solved {
+    color: #2e7d32;
+    background: #e8f5e9;
+}
+
+.cell.border-left {
+    border-left: 2px solid #212121;
+}
+
+.cell.border-top {
+    border-top: 2px solid #212121;
+}
+
+.cell.border-right {
+    border-right: 2px solid #212121;
+}
+
+.cell.border-bottom {
+    border-bottom: 2px solid #212121;
+}
+
+.cell.border-left-outer {
+    border-left: 2px solid #212121;
+}
+
+.cell.border-top-outer {
+    border-top: 2px solid #212121;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+}
+
+.btn {
+    cursor: pointer;
+    padding: 0.6rem 1.4rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #3f51b5;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+    background: rgba(63, 81, 181, 0.08);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #3f51b5;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #303f9f;
+}
+
+.status {
+    min-height: 1.4em;
+    margin: 0.5rem 0 1rem;
+    font-size: 0.95rem;
+    color: #616161;
+}
+
+.status.error {
+    color: #c62828;
+}
+
+.footer {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.footer a {
+    color: #3f51b5;
+    text-decoration: none;
+}
+
+.footer a:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 400px) {
+    .grid {
+        grid-template-columns: repeat(9, 2.1rem);
+        grid-template-rows: repeat(9, 2.1rem);
+    }
+
+    .cell {
+        width: 2.1rem;
+        height: 2.1rem;
+        font-size: 1.1rem;
+    }
 }
