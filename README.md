@@ -17,8 +17,9 @@ python3 -m http.server 8080
 
 1. Enter known digits (1–9), or pick a preset from **Load example**
 2. Click **Solve!** to auto-play (one cell at a time with explanations), or **Step** for single placements
-3. **Stop** pauses auto-play; **Resume** (Solve!) or **Step** continues from where you left off
-4. Cells filled by the solver appear in green (latest step highlighted); your clues stay bold/dark
+3. **Back** undoes the last solver placement (walk back through the explanation trail)
+4. **Stop** pauses auto-play; **Resume** (Solve!) or **Step** continues from where you left off
+5. Cells filled by the solver appear in green (latest step highlighted); your clues stay bold/dark
 
 **Clear** resets the board.
 

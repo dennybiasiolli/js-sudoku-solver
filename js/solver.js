@@ -5,7 +5,7 @@
  * Web SQL version: track possible values per cell, eliminate by row/col/box,
  * and place singles + unique candidates in rows/columns).
  *
- * Supports auto-play and single-step modes with human-readable explanations.
+ * Supports auto-play, single-step, and step-back with human-readable explanations.
  */
 
 const SIZE = 9;
@@ -21,10 +21,21 @@ let board = [];
 /** @type {Set<number>[][]} candidates — possible values per cell */
 let candidates = [];
 
+/** Clues frozen at solve-session start (for rebuild / step-back). */
+/** @type {number[][]} */
+let clueBoard = [];
+
+/**
+ * Solver placements applied in order (for step-back).
+ * @type {{ r: number, c: number, n: number, reason: string }[]}
+ */
+let stepHistory = [];
+
 /** Active solve session state */
 let solving = false;
 let autoPlaying = false;
-let stepCount = 0;
+/** True after no more singles (complete, stuck, or partial) — Back still works. */
+let sessionFinished = false;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let autoTimer = null;
 /** @type {HTMLInputElement | null} */
@@ -109,7 +120,7 @@ function buildGrid() {
 }
 
 function onCellInput(e) {
-    if (solving) stopSolving(false);
+    if (solving || stepHistory.length > 0) endSolveSession(false);
     const input = e.target;
     const digit = input.value.replace(/[^1-9]/g, '');
     input.value = digit.slice(-1);
@@ -300,41 +311,98 @@ function hasContradiction() {
     return false;
 }
 
-function updateSolveButtons() {
-    const btnSolve = document.getElementById('btnSolve');
-    const btnStep = document.getElementById('btnStep');
-    const btnStop = document.getElementById('btnStop');
-
-    btnSolve.disabled = autoPlaying;
-    btnStep.disabled = autoPlaying;
-    btnStop.disabled = !autoPlaying;
-    btnSolve.textContent = solving && !autoPlaying ? 'Resume' : 'Solve!';
+function stepCount() {
+    return stepHistory.length;
 }
 
-function finishSolving(message, isError = false) {
+function copyBoard(src) {
+    return src.map((row) => row.slice());
+}
+
+function updateSolveButtons() {
+    const btnSolve = document.getElementById('btnSolve');
+    const btnBack = document.getElementById('btnBack');
+    const btnStep = document.getElementById('btnStep');
+    const btnStop = document.getElementById('btnStop');
+    const steps = stepCount();
+    const canForward = !autoPlaying && !(sessionFinished && isComplete());
+
+    btnSolve.disabled = !canForward || (sessionFinished && !isComplete() && steps === 0);
+    btnStep.disabled = autoPlaying || sessionFinished;
+    btnBack.disabled = autoPlaying || steps === 0;
+    btnStop.disabled = !autoPlaying;
+    btnSolve.textContent =
+        solving && !autoPlaying && !sessionFinished && steps > 0 ? 'Resume' : 'Solve!';
+}
+
+function stopAutoPlay() {
     if (autoTimer !== null) {
         clearTimeout(autoTimer);
         autoTimer = null;
     }
-    solving = false;
     autoPlaying = false;
+}
+
+function endSolveSession(clearHistory = true) {
+    stopAutoPlay();
+    solving = false;
+    sessionFinished = false;
+    if (clearHistory) {
+        stepHistory = [];
+        clueBoard = [];
+    }
+    updateSolveButtons();
+}
+
+function markSessionFinished(message, isError = false) {
+    stopAutoPlay();
+    sessionFinished = true;
     updateSolveButtons();
     setStatus(message, isError);
 }
 
 function stopSolving(showPaused = true) {
-    if (autoTimer !== null) {
-        clearTimeout(autoTimer);
-        autoTimer = null;
-    }
-    autoPlaying = false;
+    stopAutoPlay();
     if (!solving) {
         updateSolveButtons();
         return;
     }
     updateSolveButtons();
-    if (showPaused) {
-        setStatus(`Paused at step ${stepCount}. Click Step or Resume to continue.`);
+    if (showPaused && !sessionFinished) {
+        setStatus(`Paused at step ${stepCount()}. Click Step, Back, or Resume to continue.`);
+    }
+}
+
+/**
+ * Rebuild board/candidates from frozen clues + step history, then refresh the grid.
+ * @param {{ r: number, c: number } | null} [highlight] cell to emphasize (last step after undo)
+ */
+function rebuildFromHistory(highlight = null) {
+    board = copyBoard(clueBoard);
+    resetCandidates();
+    applyGivenClues();
+    for (const { r, c, n } of stepHistory) {
+        placeValue(r, c, n);
+    }
+
+    clearHighlight();
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const input = inputs[r][c];
+            const isClue = clueBoard[r][c] !== 0;
+            const val = board[r][c];
+            input.value = val ? String(val) : '';
+            input.classList.toggle('given', isClue);
+            input.classList.toggle('solved', !isClue && !!val);
+            input.classList.remove('just-placed');
+        }
+    }
+
+    if (highlight) {
+        highlightCell(highlight.r, highlight.c);
+    } else if (stepHistory.length > 0) {
+        const last = stepHistory[stepHistory.length - 1];
+        highlightCell(last.r, last.c);
     }
 }
 
@@ -343,12 +411,20 @@ function stopSolving(showPaused = true) {
  * @returns {boolean} false if init failed (invalid puzzle)
  */
 function beginSolveSession() {
-    if (solving) return true;
+    if (solving) {
+        if (sessionFinished) {
+            // User stepped back from a finished state — allow forward again
+            sessionFinished = false;
+        }
+        return true;
+    }
 
     readBoardFromInputs();
+    clueBoard = copyBoard(board);
+    stepHistory = [];
+    sessionFinished = false;
     resetCandidates();
     applyGivenClues();
-    stepCount = 0;
     clearHighlight();
 
     if (hasContradiction()) {
@@ -360,53 +436,91 @@ function beginSolveSession() {
     return true;
 }
 
+function formatStepStatus(step, index, suffix = '') {
+    const base = `Step ${index}: placed ${step.n} at ${cellRef(step.r, step.c)} — ${step.reason}`;
+    return suffix ? `${base}${suffix}` : base;
+}
+
 /**
- * Apply one placement step. Returns whether more progress may still be possible.
- * @returns {'placed' | 'done' | 'stuck' | 'invalid' | 'idle'}
+ * Apply one placement step.
+ * @returns {'placed' | 'done' | 'stuck' | 'invalid'}
  */
 function applyOneStep() {
     if (!beginSolveSession()) return 'invalid';
+    sessionFinished = false;
 
     const step = findNextStep();
     if (!step) {
         if (isComplete()) {
-            finishSolving(`Completed in ${stepCount} step${stepCount === 1 ? '' : 's'}!`);
+            markSessionFinished(
+                stepCount() > 0
+                    ? `Completed in ${stepCount()} step${stepCount() === 1 ? '' : 's'}!`
+                    : 'Already complete!'
+            );
             return 'done';
         }
         if (hasContradiction()) {
-            finishSolving('Stuck: no valid solution from these clues.', true);
+            markSessionFinished('Stuck: no valid solution from these clues.', true);
             return 'stuck';
         }
-        finishSolving(
-            stepCount > 0
-                ? `Partial after ${stepCount} step${stepCount === 1 ? '' : 's'}: more advanced logic (or trial) needed for the rest.`
+        markSessionFinished(
+            stepCount() > 0
+                ? `Partial after ${stepCount()} step${stepCount() === 1 ? '' : 's'}: more advanced logic (or trial) needed for the rest.`
                 : 'No singles to place. Try different clues or a harder technique set.'
         );
         return 'stuck';
     }
 
-    const { r, c, n, reason } = step;
-    placeValue(r, c, n);
-    stepCount++;
+    placeValue(step.r, step.c, step.n);
+    stepHistory.push(step);
 
-    const input = inputs[r][c];
+    const input = inputs[step.r][step.c];
     if (!input.classList.contains('given')) {
-        input.value = String(n);
+        input.value = String(step.n);
         input.classList.add('solved');
     }
-    highlightCell(r, c);
-    setStatus(`Step ${stepCount}: placed ${n} at ${cellRef(r, c)} — ${reason}`);
+    highlightCell(step.r, step.c);
 
     if (isComplete()) {
-        finishSolving(`Step ${stepCount}: placed ${n} at ${cellRef(r, c)} — ${reason}. Completed!`);
+        markSessionFinished(`${formatStepStatus(step, stepCount())}. Completed!`);
         return 'done';
     }
     if (hasContradiction()) {
-        finishSolving('Stuck: no valid solution from these clues.', true);
+        markSessionFinished('Stuck: no valid solution from these clues.', true);
         return 'stuck';
     }
 
+    setStatus(formatStepStatus(step, stepCount()));
     return 'placed';
+}
+
+/**
+ * Undo the last solver placement and restore the previous board state.
+ */
+function stepBack() {
+    if (autoPlaying || stepHistory.length === 0) return;
+
+    stopAutoPlay();
+    sessionFinished = false;
+    solving = true;
+
+    const undone = stepHistory.pop();
+    rebuildFromHistory();
+
+    if (stepHistory.length === 0) {
+        setStatus(
+            `Undid step at ${cellRef(undone.r, undone.c)} (placed ${undone.n}). ` +
+            'Back at starting clues. Click Step or Solve! to continue.'
+        );
+    } else {
+        const prev = stepHistory[stepHistory.length - 1];
+        setStatus(
+            `Undid step at ${cellRef(undone.r, undone.c)} (placed ${undone.n}). ` +
+            `Now at step ${stepCount()}: ${prev.n} at ${cellRef(prev.r, prev.c)} — ${prev.reason}`
+        );
+    }
+
+    updateSolveButtons();
 }
 
 function scheduleAutoTick() {
@@ -425,16 +539,22 @@ function scheduleAutoTick() {
 }
 
 function startAutoSolve() {
-    if (!beginSolveSession()) return;
-
-    if (isComplete()) {
-        finishSolving('Already complete!');
+    if (sessionFinished && isComplete()) {
+        setStatus('Already complete! Use Back to review steps, or Clear / load another puzzle.');
         return;
     }
 
+    if (!beginSolveSession()) return;
+
+    if (isComplete() && stepCount() === 0) {
+        markSessionFinished('Already complete!');
+        return;
+    }
+
+    sessionFinished = false;
     autoPlaying = true;
     updateSolveButtons();
-    setStatus(stepCount === 0 ? 'Solving…' : `Resuming from step ${stepCount}…`);
+    setStatus(stepCount() === 0 ? 'Solving…' : `Resuming from step ${stepCount()}…`);
     scheduleAutoTick();
 }
 
@@ -450,9 +570,7 @@ function stepOnce() {
  * @param {string} [label]
  */
 function loadPuzzle(puzzle, label) {
-    stopSolving(false);
-    solving = false;
-    stepCount = 0;
+    endSolveSession(true);
     clearHighlight();
 
     const cleaned = puzzle.replace(/[^0-9.]/g, '').replace(/\./g, '0');
@@ -487,9 +605,7 @@ function onExampleChange(e) {
 }
 
 function clearGrid() {
-    stopSolving(false);
-    solving = false;
-    stepCount = 0;
+    endSolveSession(true);
     clearHighlight();
 
     for (let r = 0; r < SIZE; r++) {
@@ -520,6 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSolveButtons();
 
     document.getElementById('btnSolve').addEventListener('click', startAutoSolve);
+    document.getElementById('btnBack').addEventListener('click', stepBack);
     document.getElementById('btnStep').addEventListener('click', stepOnce);
     document.getElementById('btnStop').addEventListener('click', () => stopSolving(true));
     document.getElementById('btnClear').addEventListener('click', clearGrid);
